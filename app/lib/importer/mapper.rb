@@ -4,9 +4,15 @@ module Importer
   class Mapper
     attr_reader :klass, :columns, :importable, :unique
 
-    # @param [Array] Mappings of column indexes to keys
-    # @param [Array] Unique keys to find_or_create on
+    class Column < Dry::Struct
+      attribute :index, Types::Coercible::Integer
+      attribute :key, Types::Coercible::Symbol
+      attribute :overwrite, Types::Bool.default(false)
+    end
+
     # @param [Object] Model to import
+    # @param [Array] Mapping of column indexes to attribute keys
+    # @param [Array] Unique keys to find_or_create on
     def initialize(klass, params, find_by_keys)
       @columns = params.map { |m| Column.new(m) }
       find_by_keys = Array(find_by_keys)
@@ -19,19 +25,20 @@ module Importer
 
     def import(row)
       record = find_or_initialize(row)
-      action = record.new_record? ? :created : :updated
+      action = record.new_record? ? :create : :update
 
       importable.each do |col|
         next unless col.overwrite || record.send(col.key).nil?
-        # next if !col.overwrite && record.send(col.key)
 
         record.send("#{col.key}=", row[col.index])
       end
 
+      return [:skip, {}] unless record.changed?
+
       if record.save
-        { action => saved_changes_for(record) }
+        [action, saved_changes_for(record)]
       else
-        { errors: errors_for(record) }
+        [:error, errors_for(record) ]
       end
     end
 

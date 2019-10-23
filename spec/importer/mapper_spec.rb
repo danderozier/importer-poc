@@ -1,7 +1,7 @@
 require 'rails_helper'
 
 RSpec.describe Importer::Mapper, type: :model do
-  subject { described_class.new(mappings, unique_keys, Contact) }
+  subject { described_class.new(Contact, mappings, unique_keys) }
 
   let(:mappings) do
     [
@@ -49,7 +49,7 @@ RSpec.describe Importer::Mapper, type: :model do
 
     context 'when contact does not exist' do
       before(:example) do
-        @result = subject.import(data)
+        @type, @details = subject.import(data)
       end
 
       it 'creates a new contact' do
@@ -63,14 +63,13 @@ RSpec.describe Importer::Mapper, type: :model do
       end
 
       it 'returns correct results' do
-        expect(@result).to eq(
-          created: {
-            address: [nil, '123 Main St'],
-            email: [nil, 'test@test.com'],
-            member_id: [nil, '12345'],
-            name: [nil, 'Test Contact'],
-            organization: [nil, 'Acme Packing Co']
-          }
+        expect(@type).to eq(:create)
+        expect(@details).to eq(
+          address: [nil, '123 Main St'],
+          email: [nil, 'test@test.com'],
+          member_id: [nil, '12345'],
+          name: [nil, 'Test Contact'],
+          organization: [nil, 'Acme Packing Co']
         )
       end
     end
@@ -84,7 +83,7 @@ RSpec.describe Importer::Mapper, type: :model do
           organization: nil,
           member_id: '98765'
         )
-        @result = subject.import(data)
+        @type, @details = subject.import(data)
       end
 
       it 'updates the contact' do
@@ -100,13 +99,35 @@ RSpec.describe Importer::Mapper, type: :model do
       end
 
       it 'returns correct results' do
-        expect(@result).to eq(
-          updated: {
-            address: ['420 Elm St', '123 Main St'],
-            name: [nil, 'Test Contact'],
-            organization: [nil, 'Acme Packing Co']
-          }
+        expect(@type).to eq(:update)
+        expect(@details).to eq(
+          address: ['420 Elm St', '123 Main St'],
+          name: [nil, 'Test Contact'],
+          organization: [nil, 'Acme Packing Co']
         )
+      end
+    end
+
+    context 'when contact exists with same data' do
+      before(:example) do
+        @contact = Contact.create(
+          name: 'Test Contact',
+          email: 'test@test.com',
+          address: '123 Main St',
+          organization: 'Acme Packing Co',
+          member_id: '12345'
+        )
+        @type, @details = subject.import(data)
+      end
+
+      it 'does not update the contact' do
+        c = Contact.find_by_email('test@test.com')
+        expect(c).to eq(@contact)
+      end
+
+      it 'returns correct results' do
+        expect(@type).to eq(:skip)
+        expect(@details).to eq({})
       end
     end
 
@@ -121,7 +142,7 @@ RSpec.describe Importer::Mapper, type: :model do
         ]
       end
       before(:example) do
-        @result = subject.import(data)
+        @type, @details = subject.import(data)
       end
 
       it 'does not create a contact' do
@@ -130,11 +151,10 @@ RSpec.describe Importer::Mapper, type: :model do
       end
 
       it 'returns correct errors' do
-        expect(@result).to eq(
-          errors: {
-            member_id: ['must be five digits'],
-            name: ['is too short (minimum is 2 characters)']
-          }
+        expect(@type).to eq(:error)
+        expect(@details).to eq(
+          member_id: ['must be five digits'],
+          name: ['is too short (minimum is 2 characters)']
         )
       end
     end

@@ -1,3 +1,7 @@
 # frozen_string_literal: true
 
-module Importer; end
+module Importer
+  module Types
+    include Dry.Types()
+  end
+end
